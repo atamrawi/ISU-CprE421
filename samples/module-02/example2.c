@@ -7,6 +7,6 @@ int main(void) {
     short ss = SHRT_MIN; // -32768
     us -= 1;
     ss -= 1;
-    printf("%u %d\n", us, ss);
+    printf("us(\%u)=%u\tss(\%d)=%d\n", us, ss);
     return 0;
 }
