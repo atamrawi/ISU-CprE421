@@ -5,7 +5,8 @@ int main(void) {
 	assert(sizeof(short)==2);
 	short ss = SHRT_MIN;
 	int si = ss;
-	printf("ss(\%d)=%d\tsi(\%d)=%d\n", ss, si);
-    printf("ss(\%x)=%x\tsi(\%x)=%x\n", ss, si);
+	printf("ss(%%hd)=%hd\tsi(%%d)=%d\n", ss, si);
+    printf("ss(%%hx)=%hx\tsi(%%x)=%x\n", ss, si);
 	return 0;
 }
+
