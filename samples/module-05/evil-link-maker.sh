@@ -4,4 +4,4 @@
 rm config
 
 # Make a symbolic link called config -> evilconfig
-ln -s evilconfig config
+ln -s evilconfig.txt config

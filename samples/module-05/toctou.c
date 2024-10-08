@@ -30,6 +30,9 @@ int main() {
     if (is_symlink(file)) {
         printf("...oops! This is a symlink, quitting...");
         return 0;
+    } else {
+        puts("\t...nope! Ok let's take a coffee break.\n");
+        sleep(5);
     }
     puts("---CONCURRENT PROCESS STARTS---");
     system("./evil-link-maker.sh");
