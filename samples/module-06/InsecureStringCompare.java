@@ -1,7 +1,7 @@
 public class InsecureStringCompare {
     public static void main(String[] args) {
         String str1 = "SuperSecretPassword";
-        String str2 = "SuperSecretPassworx"; // Intentional mismatch at the end
+        String str2 = "ScperSecretPassworx"; // Intentional mismatch at the end
 
         // Measure start time
         long startTime = System.nanoTime();
@@ -32,6 +32,7 @@ public class InsecureStringCompare {
 
         // Compare character by character
         for (int i = 0; i < ca.length; i++) {
+            System.out.println("Comparing '"+ ca[i] +"' with '"+ cb[i]+"'");
             if (ca[i] != cb[i]) {
                 return false; // Return as soon as a mismatch is found (timing vulnerability)
             }
@@ -40,3 +41,5 @@ public class InsecureStringCompare {
         return true; // Strings are equal
     }
 }
+
+

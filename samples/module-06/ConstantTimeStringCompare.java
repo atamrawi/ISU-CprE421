@@ -1,7 +1,7 @@
 public class ConstantTimeStringCompare {
     public static void main(String[] args) {
         String str1 = "SuperSecretPassword";
-        String str2 = "SuperSecretPassworx"; // Intentional mismatch at the end
+        String str2 = "cuperSecretPassworx"; // Intentional mismatch at the end
 
         // Measure start time
         long startTime = System.nanoTime();
@@ -35,6 +35,7 @@ public class ConstantTimeStringCompare {
 
         // Compare each character, always iterating through the entire length
         for (int i = 0; i < ca.length; i++) {
+            System.out.println("Comparing '"+ ca[i] +"' with '"+ cb[i]+"'");
             result &= (ca[i] == cb[i]); // Keep comparing every character
         }
 
