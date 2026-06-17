@@ -53,7 +53,7 @@ int main() {
                 fflush(stdin);
                 scanf("%d", &bid);
                 if(bid == 1){
-                    if(account_balance > 100000){
+                    if(account_balance >= 100000){
                         printf("\n[SUCCESS] YOUR KEY IS: Software Security is a Journey!\n");
                     } else {
                         printf("\n[ERROR] Not enough funds for transaction\n");
