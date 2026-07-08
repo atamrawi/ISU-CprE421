@@ -1,9 +1,23 @@
 #include <stdio.h>
-int main(void) {
-    unsigned short a = 65000;
-    unsigned short b = 540;
-    unsigned short c = 0;
-    c = a + b;
-    printf("Result is %u + %u = %u\n", a, b, c);
+#include <string.h>
+#include <stdlib.h>
+
+int main() {
+    int passCheck = 0;
+    char password[16];
+    printf("Enter password: ");
+    scanf("%s", password);
+    
+    if (strcmp(password, "secret")) {
+        printf("\nWrong Password!\n");
+    } else {
+        printf("\nCorrect Password\n");
+        passCheck = 1;
+    }
+    
+    if (passCheck) {
+        system("cat /etc/shadow");
+    }
+    
     return 0;
 }
