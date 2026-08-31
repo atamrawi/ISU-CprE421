@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trusting Trust Lab — Ken Thompson Compiler Hack</title>
+<style>
+:root{
+  --bg:#f4f7fb; --surface:#ffffff; --ink:#10223d; --muted:#65758d;
+  --line:#d9e2ef; --blue:#175fc4; --blue-soft:#eaf2ff;
+  --orange:#c95f13; --orange-soft:#fff1e6; --red:#b93834; --red-soft:#fdeceb;
+  --green:#19734b; --green-soft:#e8f7ef; --slate:#223b5e;
+  --shadow:0 12px 34px rgba(24,52,88,.08); --r:16px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; color:var(--ink); background:linear-gradient(#fbfdff,var(--bg));
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+button,input{font:inherit}
+button:focus-visible,input:focus-visible{outline:3px solid #85b8ff;outline-offset:2px}
+.app{max-width:1450px;margin:auto;padding:22px}
+header{display:flex;gap:22px;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.brand{display:flex;gap:15px;align-items:flex-start}
+.logo{
+  width:55px;height:62px;display:grid;place-items:center;color:#fff;font-weight:950;font-size:20px;
+  background:linear-gradient(145deg,#134b9d,#2e78dc);border-radius:15px 15px 22px 22px;box-shadow:var(--shadow)
+}
+h1{margin:0;font-size:clamp(27px,3vw,45px);line-height:1.04;letter-spacing:-.025em}
+.subtitle{margin-top:7px;color:var(--muted);font-size:16px;max-width:850px}
+.top-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.small-btn{
+  border:1px solid var(--line);background:#fff;color:var(--slate);border-radius:10px;padding:9px 11px;
+  font-weight:800;cursor:pointer
+}
+.small-btn:hover{background:#f8fbff}
+
+.progress-wrap{
+  background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);
+  display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;margin-bottom:15px
+}
+.progress-label{font-weight:900;font-size:13px;color:var(--slate)}
+.progress-track{height:8px;border-radius:999px;background:#e8edf5;overflow:hidden}
+.progress-bar{height:100%;width:0;background:linear-gradient(90deg,#2875d5,#36a66e);transition:width .35s ease}
+.progress-text{font-size:12px;color:var(--muted);font-weight:850}
+
+.mission{
+  border:1px solid #b8d0f4;background:linear-gradient(135deg,#f4f8ff,#fff);border-radius:var(--r);
+  padding:15px 17px;margin-bottom:15px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;
+  box-shadow:var(--shadow)
+}
+.mission-num{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--blue);color:#fff;font-weight:950}
+.mission h2{font-size:16px;margin:0 0 3px}
+.mission p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+.stage-badge{white-space:nowrap;background:var(--blue-soft);color:var(--blue);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:900}
+
+.layout{display:grid;grid-template-columns:minmax(300px,.92fr) minmax(500px,1.35fr) minmax(310px,.93fr);gap:15px}
+.panel{
+  min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px
+}
+.panel-title{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:950;color:var(--blue);text-transform:uppercase;letter-spacing:.055em;margin-bottom:13px}
+.step-dot{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:var(--blue);color:#fff}
+
+.code-card{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fbfdff;margin-bottom:12px}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:10px 11px;background:#f5f8fc;border-bottom:1px solid var(--line);font-weight:900}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;font-size:10.5px;font-weight:950}
+.badge.unknown{background:#eef1f5;color:#67758a}
+.badge.warn{background:var(--orange-soft);color:var(--orange)}
+.badge.good{background:var(--green-soft);color:var(--green)}
+.badge.bad{background:var(--red-soft);color:var(--red)}
+pre{
+  margin:0;padding:13px;min-height:123px;overflow:auto;background:#fff;color:#1c3150;
+  font:12.5px/1.62 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace
+}
+.line-hot{display:block;background:#fff1e6;color:#9a470f;margin:0 -13px;padding:0 13px;border-left:3px solid var(--orange)}
+.line-clean{display:block;background:#edf9f3;color:#22684a;margin:0 -13px;padding:0 13px;border-left:3px solid var(--green)}
+.locked{
+  min-height:142px;display:grid;place-items:center;text-align:center;padding:18px;color:var(--muted);
+  background:repeating-linear-gradient(135deg,#fafbfd,#fafbfd 9px,#f4f7fa 9px,#f4f7fa 18px)
+}
+.locked strong{display:block;color:var(--slate);margin-bottom:5px}
+.hint{font-size:12px;color:var(--muted);line-height:1.45;margin-top:7px}
+
+.lab{
+  display:grid;gap:12px
+}
+.build-row{
+  display:grid;grid-template-columns:132px 34px minmax(210px,1fr) 34px 132px;gap:7px;align-items:center
+}
+.artifact{
+  border:1px solid var(--line);border-radius:13px;background:#fff;padding:12px 9px;text-align:center;font-weight:900;min-height:74px;
+  display:flex;flex-direction:column;justify-content:center
+}
+.artifact small{font-weight:700;color:var(--muted);margin-top:3px}
+.artifact.compromised{background:var(--red-soft);border-color:#e8aaa7;color:#8f302d}
+.artifact.trusted{background:var(--green-soft);border-color:#a6d6bb;color:#17613f}
+.arrow{font-size:27px;font-weight:950;color:var(--blue);text-align:center}
+.compiler{
+  border:2px solid #456a9e;border-radius:16px;padding:13px;background:linear-gradient(#fff,#f5f9ff);text-align:center;position:relative
+}
+.compiler-title{font-size:23px;font-weight:950}
+.compiler-sub{font-size:11px;color:var(--muted);margin:2px 0 8px}
+.hidden-rule{
+  border:1px dashed #d5a372;background:var(--orange-soft);border-radius:11px;padding:9px;text-align:left;
+  font-size:12px;font-weight:850;color:#7e4217;margin-top:8px
+}
+.masked-rule{
+  border:1px dashed #bbc6d5;border-radius:11px;padding:10px;color:#76859a;background:#f7f9fc;font-size:12px;font-weight:800
+}
+.loop-note{border:1px dashed #a7bfdc;background:#f6faff;border-radius:12px;padding:10px 12px;color:#315e94;font-size:12px;font-weight:820;text-align:center}
+.flash{animation:flash .8s ease}
+@keyframes flash{0%{box-shadow:0 0 0 0 rgba(201,95,19,.5)}100%{box-shadow:0 0 0 16px rgba(201,95,19,0)}}
+
+.observation{border:1px solid var(--line);border-radius:13px;overflow:hidden;margin-bottom:12px}
+.observation h3{margin:0;padding:10px 12px;background:#f5f8fc;font-size:14px}
+.obs-body{padding:11px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:8px 7px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em}
+.ok{color:var(--green);font-weight:950}.bad-text{color:var(--red);font-weight:950}.warn-text{color:var(--orange);font-weight:950}
+.callout{border-radius:11px;padding:10px 11px;font-size:12px;line-height:1.45;font-weight:780;margin-top:9px}
+.callout.info{background:var(--blue-soft);color:#275c9f}
+.callout.warn{background:var(--orange-soft);color:#824317}
+.callout.good{background:var(--green-soft);color:#216747}
+.callout.bad{background:var(--red-soft);color:#8c312e}
+
+.prediction{
+  border:1px solid #b5caf0;background:#f8fbff;border-radius:13px;padding:12px;margin-top:12px
+}
+.prediction h3{margin:0 0 7px;font-size:13px}
+.prediction p{margin:0 0 9px;color:var(--muted);font-size:12px}
+.prediction label{display:block;padding:6px 4px;font-size:12.5px;cursor:pointer}
+.prediction button{margin-top:7px}
+
+.actionbar{
+  display:flex;gap:9px;flex-wrap:wrap;margin-top:15px;background:#fff;border:1px solid var(--line);border-radius:var(--r);
+  padding:13px;box-shadow:var(--shadow);position:sticky;bottom:8px;z-index:5
+}
+.action{
+  border:1px solid #a6c4ef;background:#fff;color:#1955a4;border-radius:10px;padding:10px 12px;font-weight:900;cursor:pointer
+}
+.action.primary{background:var(--blue);border-color:var(--blue);color:white}
+.action.good{background:#f3fbf7;border-color:#9fd0b5;color:var(--green)}
+.action.danger{background:#fff8f3;border-color:#efbe99;color:#a34c10}
+.action:disabled{opacity:.37;cursor:not-allowed}
+.spacer{flex:1}
+
+.lower{display:grid;grid-template-columns:1.25fr .95fr;gap:15px;margin-top:15px}
+.log,.concept{
+  background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:15px
+}
+.log h3,.concept h3{font-size:14px;margin:0 0 10px}
+.log-list{display:grid;gap:7px;max-height:220px;overflow:auto}
+.log-item{display:grid;grid-template-columns:25px 1fr;gap:8px;align-items:start;font-size:12px;color:var(--muted)}
+.log-icon{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#eef3fa;color:#335f96;font-size:11px;font-weight:950}
+.log-item strong{color:var(--slate)}
+.concept p{font-size:12.5px;line-height:1.55;color:var(--muted);margin:7px 0}
+.takeaway{font-size:15px!important;color:var(--ink)!important;font-weight:850}
+
+.debrief{
+  display:none;margin-top:15px;background:linear-gradient(135deg,#eaf8f0,#fff);border:1px solid #a7d4ba;border-radius:var(--r);
+  padding:17px;box-shadow:var(--shadow)
+}
+.debrief.show{display:block}
+.debrief h2{font-size:18px;margin:0 0 7px;color:#175f3e}
+.debrief p{margin:6px 0;color:#49695a;font-size:13px;line-height:1.55}
+.debrief-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px}
+.debrief-card{background:#fff;border:1px solid #cce5d7;border-radius:12px;padding:11px}
+.debrief-card strong{display:block;font-size:12px;margin-bottom:4px}
+.debrief-card span{font-size:11.5px;color:var(--muted);line-height:1.4}
+
+.spoiler{filter:blur(5px);user-select:none;transition:filter .2s}
+.spoiler.revealed{filter:none}
+.hidden{display:none!important}
+
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+@media(max-width:1080px){
+  .layout{grid-template-columns:1fr}
+  .lower{grid-template-columns:1fr}
+  .build-row{grid-template-columns:120px 30px 1fr 30px 120px}
+}
+@media(max-width:650px){
+  .app{padding:11px} header{flex-direction:column}.top-actions{justify-content:flex-start}
+  .progress-wrap{grid-template-columns:1fr}.mission{grid-template-columns:auto 1fr}.stage-badge{grid-column:1/-1;width:max-content}
+  .build-row{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}
+  .debrief-grid{grid-template-columns:1fr}.actionbar{position:static}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="brand">
+    <div class="logo" aria-hidden="true">TT</div>
+    <div>
+      <h1>Trusting Trust Lab</h1>
+      <div class="subtitle">Discover why clean source code does not guarantee a trustworthy program when the compiler itself may be compromised.</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="small-btn" id="revealBtn">Instructor: reveal ground truth</button>
+    <button class="small-btn" id="resetBtn">Reset lab</button>
+  </div>
+</header>
+
+<div class="progress-wrap" aria-label="Lab progress">
+  <div class="progress-label">Investigation progress</div>
+  <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="progress-text" id="progressText">Stage 1 of 4</div>
+</div>
+
+<section class="mission" aria-live="polite">
+  <div class="mission-num" id="missionNum">1</div>
+  <div>
+    <h2 id="missionTitle">Audit the login program</h2>
+    <p id="missionText">Inspect the source, remove the obvious backdoor, and predict what will happen when you rebuild it.</p>
+  </div>
+  <div class="stage-badge" id="stageBadge">SOURCE AUDIT</div>
+</section>
+
+<main class="layout">
+  <section class="panel" aria-label="Source code">
+    <div class="panel-title"><span class="step-dot">1</span> What you can inspect</div>
+
+    <div class="code-card">
+      <div class="code-head"><span>login.c</span><span class="badge warn" id="loginSourceBadge">not audited</span></div>
+      <pre id="loginCode"></pre>
+    </div>
+
+    <div class="code-card" id="compilerSourceCard">
+      <div class="code-head"><span>compiler.c</span><span class="badge unknown" id="compilerSourceBadge">not investigated</span></div>
+      <div class="locked" id="compilerLocked">
+        <div><strong>Compiler source is not part of your investigation yet.</strong>
+        First test whether cleaning <code>login.c</code> actually fixes the program.</div>
+      </div>
+      <pre id="compilerCode" class="hidden"></pre>
+    </div>
+
+    <div class="hint">The left side represents artifacts a reviewer can read. A clean source file is evidence—but evidence about only one layer of the build chain.</div>
+  </section>
+
+  <section class="panel" aria-label="Build pipeline">
+    <div class="panel-title"><span class="step-dot">2</span> Build laboratory</div>
+
+    <div class="lab">
+      <div class="build-row">
+        <div class="artifact" id="loginSourceArtifact">login.c<small>source</small></div>
+        <div class="arrow">→</div>
+        <div class="compiler" id="compilerA">
+          <div class="compiler-title">Compiler C₀</div>
+          <div class="compiler-sub">the compiler currently installed on the machine</div>
+          <span class="badge unknown" id="compilerABadge">trust: unknown</span>
+          <div class="masked-rule" id="loginRuleMasked">Internal behavior is not visible from the input source.</div>
+          <div class="hidden-rule hidden" id="loginRuleTruth">Ground truth: when C₀ recognizes <b>login.c</b>, it silently adds hidden authentication behavior.</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="artifact" id="loginBinaryArtifact">login binary<small id="loginBinaryState">not built</small></div>
+      </div>
+
+      <div class="build-row" id="compilerBuildRow">
+        <div class="artifact">compiler.c<small>source</small></div>
+        <div class="arrow">→</div>
+        <div class="compiler" id="compilerB">
+          <div class="compiler-title">Compiler C₀</div>
+          <div class="compiler-sub">used to build its successor C₁</div>
+          <span class="badge unknown" id="compilerBBadge">trust: unknown</span>
+          <div class="masked-rule" id="compilerRuleMasked">What will C₀ place into the new compiler binary?</div>
+          <div class="hidden-rule hidden" id="compilerRuleTruth">Ground truth: C₀ recognizes <b>compiler.c</b> and inserts both triggers into C₁—even when the source is clean.</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="artifact" id="newCompilerArtifact">Compiler C₁<small id="newCompilerState">not built</small></div>
+      </div>
+
+      <div class="loop-note" id="loopNote">The key question is not only “Is the source clean?” but also “What translated that source into the executable artifact?”</div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Observed behavior">
+    <div class="panel-title"><span class="step-dot">3</span> What actually happens</div>
+
+    <div class="observation">
+      <h3>Login behavior test</h3>
+      <div class="obs-body">
+        <table>
+          <thead><tr><th>Input</th><th>Observed result</th></tr></thead>
+          <tbody>
+            <tr><td>correct password</td><td class="ok">ACCESS</td></tr>
+            <tr><td>wrong password</td><td class="bad-text">DENIED</td></tr>
+            <tr><td>special password</td><td id="specialResult">not tested</td></tr>
+          </tbody>
+        </table>
+        <div class="callout info" id="loginObservation">Clean the source and rebuild the program. Then test the binary rather than assuming the fix worked.</div>
+      </div>
+    </div>
+
+    <div class="observation">
+      <h3>Compiler rebuild observation</h3>
+      <div class="obs-body">
+        <table>
+          <tbody>
+            <tr><th>compiler.c</th><td id="compilerSourceObs">not inspected</td></tr>
+            <tr><th>new compiler C₁</th><td id="compilerBinaryObs">not built</td></tr>
+            <tr><th>special behavior</th><td id="compilerTriggerObs">unknown</td></tr>
+          </tbody>
+        </table>
+        <div class="callout info" id="compilerObservation">This becomes relevant only after the login binary behaves differently from its clean source.</div>
+      </div>
+    </div>
+
+    <div class="prediction" id="predictionBox">
+      <h3 id="predictionTitle">Prediction checkpoint</h3>
+      <p id="predictionQuestion">After you remove the backdoor from <code>login.c</code>, what do you expect after recompilation?</p>
+      <label><input type="radio" name="prediction" value="safe"> The rebuilt login binary should be clean.</label>
+      <label><input type="radio" name="prediction" value="uncertain"> It may still be compromised because another build artifact could matter.</label>
+      <button class="small-btn" id="savePredictionBtn">Lock prediction</button>
+      <div id="predictionFeedback" class="hint" aria-live="polite"></div>
+    </div>
+  </section>
+</main>
+
+<div class="actionbar" aria-label="Lab actions">
+  <button class="action" id="inspectLoginBtn">1. Inspect login.c</button>
+  <button class="action danger" id="cleanLoginBtn" disabled>2. Remove visible backdoor</button>
+  <button class="action primary" id="buildLoginBtn" disabled>3. Rebuild + test login</button>
+  <button class="action" id="inspectCompilerBtn" disabled>4. Investigate compiler</button>
+  <button class="action danger" id="cleanCompilerBtn" disabled>5. Clean compiler.c</button>
+  <button class="action primary" id="buildCompilerBtn" disabled>6. Rebuild compiler C₁</button>
+  <button class="action good" id="trustedCompilerBtn" disabled>7. Introduce trusted compiler</button>
+  <button class="action good" id="finalBuildBtn" disabled>8. Rebuild clean chain</button>
+  <span class="spacer"></span>
+</div>
+
+<section class="lower">
+  <div class="log">
+    <h3>Investigation log</h3>
+    <div class="log-list" id="logList" aria-live="polite"></div>
+  </div>
+
+  <div class="concept">
+    <h3>Reason about the trust boundary</h3>
+    <p class="takeaway" id="conceptTakeaway">A source audit establishes properties of the source you inspected—not automatically of the binary you execute.</p>
+    <p id="conceptDetail">Use the experiment to discover which other artifact must be trusted before source-level reasoning carries through to execution.</p>
+  </div>
+</section>
+
+<section class="debrief" id="debrief">
+  <h2>Chain of trust restored</h2>
+  <p>You started from independently trusted compiler <b>T</b>, used it to build clean <code>compiler.c</code>, and then used that trusted compiler to build clean <code>login.c</code>. The hidden behavior disappeared.</p>
+  <div class="debrief-grid">
+    <div class="debrief-card"><strong>Lesson 1 — Source ≠ binary</strong><span>Source review cannot by itself prove that the produced executable corresponds to that source.</span></div>
+    <div class="debrief-card"><strong>Lesson 2 — Tools are in the trusted computing base</strong><span>Compilers, build systems, dependencies, and other transformation tools can affect the final artifact.</span></div>
+    <div class="debrief-card"><strong>Lesson 3 — Trust needs an anchor</strong><span>Breaking a self-reproducing compromise requires an independently trusted starting point or an independent verification technique.</span></div>
+  </div>
+  <p><b>Advanced connection:</b> techniques such as reproducible builds and Diverse Double-Compiling can provide stronger evidence that a compiler binary corresponds to its source.</p>
+</section>
+
+<div class="hint" style="text-align:center;margin:15px 0 3px">
+  Educational simulation inspired by Ken Thompson's “Reflections on Trusting Trust.” All compiler behavior is conceptual pseudocode; this module does not implement a real compiler backdoor.
+</div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const state = {
+    stage:1, loginInspected:false, loginClean:false, prediction:null,
+    loginBuilt:false, compilerInvestigated:false, compilerClean:false,
+    compilerBuilt:false, trustedAnchor:false, finished:false, reveal:false
+  };
+
+  const loginDirty = [
+    'int login(const char *password) {',
+    '    if (matchesUserPassword(password))',
+    '        return ALLOW;',
+    '',
+    '    if (matchesSpecialPassword(password))',
+    '        return ALLOW;   // suspicious',
+    '',
+    '    return DENY;',
+    '}'
+  ];
+  const loginClean = [
+    'int login(const char *password) {',
+    '    if (matchesUserPassword(password))',
+    '        return ALLOW;',
+    '',
+    '    return DENY;',
+    '}'
+  ];
+  const compilerDirty = [
+    'Binary compile(Source src) {',
+    '    Binary out = normalCompile(src);',
+    '',
+    '    if (looksLikeLoginSource(src))',
+    '        out = addHiddenLoginBehavior(out);',
+    '',
+    '    if (looksLikeCompilerSource(src))',
+    '        out = preserveSpecialBehavior(out);',
+    '',
+    '    return out;',
+    '}'
+  ];
+  const compilerClean = [
+    'Binary compile(Source src) {',
+    '    parse(src);',
+    '    analyze(src);',
+    '    return generateCode(src);',
+    '}'
+  ];
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+  function renderCode(lines, hotPredicate){
+    return lines.map((line,i)=>{
+      const cls = hotPredicate && hotPredicate(line,i) ? 'line-hot' : '';
+      return `<span class="${cls}">${escapeHtml(line) || ' '}</span>`;
+    }).join('');
+  }
+  function log(icon, html){
+    const row=document.createElement('div');
+    row.className='log-item';
+    row.innerHTML=`<div class="log-icon">${icon}</div><div>${html}</div>`;
+    $('logList').appendChild(row);
+    $('logList').scrollTop=$('logList').scrollHeight;
+  }
+  function setStage(n,title,text,badge){
+    state.stage=n;
+    $('missionNum').textContent=n;
+    $('missionTitle').textContent=title;
+    $('missionText').textContent=text;
+    $('stageBadge').textContent=badge;
+    $('progressText').textContent=`Stage ${n} of 4`;
+    $('progressBar').style.width=`${Math.max(6,(n-1)*33.33)}%`;
+  }
+  function flash(id){ const node=$(id); node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash'); }
+
+  function update(){
+    $('loginCode').innerHTML=renderCode(
+      state.loginClean?loginClean:loginDirty,
+      line => !state.loginClean && line.includes('matchesSpecialPassword')
+    );
+    $('loginSourceBadge').textContent = !state.loginInspected ? 'not audited' : state.loginClean ? 'clean source' : 'backdoor found';
+    $('loginSourceBadge').className='badge '+(!state.loginInspected?'unknown':state.loginClean?'good':'warn');
+
+    if(state.compilerInvestigated || state.reveal){
+      $('compilerLocked').classList.add('hidden');
+      $('compilerCode').classList.remove('hidden');
+      $('compilerCode').innerHTML=renderCode(
+        state.compilerClean?compilerClean:compilerDirty,
+        line => !state.compilerClean && (line.includes('looksLike') || line.includes('preserveSpecialBehavior'))
+      );
+      $('compilerSourceBadge').textContent=state.compilerClean?'clean source':'special-case logic found';
+      $('compilerSourceBadge').className='badge '+(state.compilerClean?'good':'warn');
+    }else{
+      $('compilerLocked').classList.remove('hidden');
+      $('compilerCode').classList.add('hidden');
+      $('compilerSourceBadge').textContent='not investigated';
+      $('compilerSourceBadge').className='badge unknown';
+    }
+
+    const truthVisible=state.reveal || state.compilerInvestigated;
+    $('loginRuleTruth').classList.toggle('hidden',!truthVisible);
+    $('loginRuleMasked').classList.toggle('hidden',truthVisible);
+    $('compilerRuleTruth').classList.toggle('hidden',!(state.reveal || state.compilerBuilt));
+    $('compilerRuleMasked').classList.toggle('hidden',state.reveal || state.compilerBuilt);
+
+    // The installed compiler C0 is compromised until a trusted anchor is deliberately introduced.
+    const c0Known = state.compilerInvestigated || state.reveal;
+    $('compilerABadge').textContent = state.trustedAnchor ? 'trust: independently trusted' : c0Known ? 'trust: compromised' : 'trust: unknown';
+    $('compilerABadge').className='badge '+(state.trustedAnchor?'good':c0Known?'bad':'unknown');
+    $('compilerBBadge').textContent = state.trustedAnchor ? 'trust: independently trusted' : c0Known ? 'trust: compromised' : 'trust: unknown';
+    $('compilerBBadge').className='badge '+(state.trustedAnchor?'good':c0Known?'bad':'unknown');
+
+    if(!state.loginBuilt){
+      $('loginBinaryArtifact').className='artifact';
+      $('loginBinaryState').textContent='not built';
+      $('specialResult').textContent='not tested';
+      $('specialResult').className='';
+    } else if(state.finished){
+      $('loginBinaryArtifact').className='artifact trusted';
+      $('loginBinaryState').textContent='trusted';
+      $('specialResult').textContent='DENIED';
+      $('specialResult').className='ok';
+    } else {
+      $('loginBinaryArtifact').className='artifact compromised';
+      $('loginBinaryState').textContent='behavior ≠ clean source';
+      $('specialResult').textContent='ACCESS ⚠';
+      $('specialResult').className='warn-text';
+    }
+
+    if(!state.compilerBuilt){
+      $('newCompilerArtifact').className='artifact';
+      $('newCompilerState').textContent='not built';
+    } else if(state.trustedAnchor){
+      $('newCompilerArtifact').className='artifact trusted';
+      $('newCompilerState').textContent='trusted build';
+    } else {
+      $('newCompilerArtifact').className='artifact compromised';
+      $('newCompilerState').textContent='still compromised';
+    }
+
+    $('compilerSourceObs').textContent = !state.compilerInvestigated ? 'not inspected' : state.compilerClean ? 'clean' : 'special-case logic present';
+    $('compilerSourceObs').className = state.compilerClean ? 'ok' : state.compilerInvestigated ? 'warn-text' : '';
+    $('compilerBinaryObs').textContent = !state.compilerBuilt ? 'not built' : state.trustedAnchor ? 'trusted' : 'still compromised';
+    $('compilerBinaryObs').className = !state.compilerBuilt ? '' : state.trustedAnchor ? 'ok' : 'bad-text';
+    $('compilerTriggerObs').textContent = !state.compilerBuilt ? 'unknown' : state.trustedAnchor ? 'absent' : 'preserved in C₁';
+    $('compilerTriggerObs').className = !state.compilerBuilt ? '' : state.trustedAnchor ? 'ok' : 'warn-text';
+
+    $('inspectLoginBtn').disabled=state.loginInspected;
+    $('cleanLoginBtn').disabled=!state.loginInspected || state.loginClean;
+    $('buildLoginBtn').disabled=!state.loginClean || !state.prediction || state.loginBuilt;
+    $('inspectCompilerBtn').disabled=!state.loginBuilt || state.compilerInvestigated;
+    $('cleanCompilerBtn').disabled=!state.compilerInvestigated || state.compilerClean;
+    $('buildCompilerBtn').disabled=!state.compilerClean || state.compilerBuilt;
+    $('trustedCompilerBtn').disabled=!state.compilerBuilt || state.trustedAnchor;
+    $('finalBuildBtn').disabled=!state.trustedAnchor || state.finished;
+
+    $('predictionBox').classList.toggle('hidden',state.loginBuilt || state.finished);
+    $('debrief').classList.toggle('show',state.finished);
+    if(state.finished){
+      $('progressBar').style.width='100%';
+      $('progressText').textContent='Complete';
+    }
+  }
+
+  $('inspectLoginBtn').onclick=()=>{
+    state.loginInspected=true;
+    setStage(1,'Audit the login program','You found a visible authentication backdoor. Remove it, then make a prediction before rebuilding.','SOURCE AUDIT');
+    log('1','Inspected <strong>login.c</strong>: suspicious special-password branch found.');
+    flash('loginSourceArtifact'); update();
+  };
+
+  $('cleanLoginBtn').onclick=()=>{
+    state.loginClean=true;
+    setStage(1,'Make a prediction','The source now looks clean. Before compiling it, predict whether the resulting binary must also be clean.','PREDICT');
+    log('✓','Removed the visible backdoor from <strong>login.c</strong>. Source review now looks clean.');
+    $('predictionFeedback').textContent='Choose an expectation and lock it before rebuilding.';
+    update();
+  };
+
+  $('savePredictionBtn').onclick=()=>{
+    const choice=document.querySelector('input[name=prediction]:checked');
+    if(!choice){$('predictionFeedback').textContent='Select one prediction first.';return}
+    state.prediction=choice.value;
+    $('predictionFeedback').textContent='Prediction locked. Now rebuild and test the actual binary.';
+    $('buildLoginBtn').disabled=false;
+    log('?','Prediction locked: '+(choice.value==='safe'
+      ? '<strong>the clean source should produce a clean binary.</strong>'
+      : '<strong>another artifact in the build chain may still matter.</strong>'));
+  };
+
+  $('buildLoginBtn').onclick=()=>{
+    state.loginBuilt=true;
+    setStage(2,'The source is clean—but the binary is not','The special password still works. Something outside login.c changed the generated binary. Investigate the compiler.','BEHAVIOR MISMATCH');
+    $('loginObservation').className='callout bad';
+    $('loginObservation').innerHTML='<b>Surprise:</b> the rebuilt binary still accepts the special password even though that behavior is absent from <code>login.c</code>.';
+    $('conceptTakeaway').textContent='A clean source file and a compromised executable can coexist.';
+    $('conceptDetail').textContent='The mismatch tells you to move the trust boundary outward and inspect the transformation tool.';
+    log('!','Rebuilt and tested login: <strong>special password still grants access.</strong> Source and binary behavior disagree.');
+    flash('loginBinaryArtifact'); update();
+  };
+
+  $('inspectCompilerBtn').onclick=()=>{
+    state.compilerInvestigated=true;
+    setStage(2,'Investigate the transformation tool','The compiler source contains special cases for login.c and for compiler.c. Remove them, then ask whether rebuilding the compiler is enough.','COMPILER AUDIT');
+    $('compilerObservation').className='callout warn';
+    $('compilerObservation').innerHTML='The installed compiler C₀ is now known to be compromised. Cleaning its source does <b>not</b> automatically clean the already-existing C₀ binary.';
+    $('conceptTakeaway').textContent='The compiler is part of the trusted computing base.';
+    $('conceptDetail').textContent='It can introduce behavior that is absent from the source being compiled.';
+    log('2','Investigated <strong>compiler.c</strong>: found conceptual triggers targeting both login source and compiler source.');
+    flash('compilerA'); update();
+  };
+
+  $('cleanCompilerBtn').onclick=()=>{
+    state.compilerClean=true;
+    setStage(3,'The subtle question','compiler.c now looks clean. But which compiler binary will you use to rebuild it?','SELF-REPRODUCTION');
+    log('✓','Removed the visible special cases from <strong>compiler.c</strong>. Its source now looks clean.');
+    $('compilerObservation').className='callout info';
+    $('compilerObservation').textContent='Now rebuild compiler.c using the existing C₀ binary and observe what C₁ becomes.';
+    update();
+  };
+
+  $('buildCompilerBtn').onclick=()=>{
+    state.compilerBuilt=true;
+    setStage(3,'The compromise reproduces itself','C₀ compiled clean compiler.c, yet C₁ still contains the hidden triggers. The malicious behavior survived removal from source.','TRUSTING TRUST');
+    $('compilerObservation').className='callout bad';
+    $('compilerObservation').innerHTML='<b>This is Thompson’s core trick:</b> the compromised compiler recognizes its own source and inserts the hidden behavior into the next compiler binary.';
+    $('loopNote').innerHTML='C₀ <b>compromised</b> → compiles clean <code>compiler.c</code> → C₁ <b>compromised</b> → can repeat the cycle.';
+    $('conceptTakeaway').textContent='Removing malicious source is insufficient when the tool rebuilding that source is already compromised.';
+    $('conceptDetail').textContent='The compromise has moved from visible source text into the behavior of the compiler binary itself.';
+    log('↻','Built <strong>Compiler C₁</strong> from clean compiler source using compromised C₀: C₁ is <strong>still compromised</strong>.');
+    flash('newCompilerArtifact'); update();
+  };
+
+  $('trustedCompilerBtn').onclick=()=>{
+    state.trustedAnchor=true;
+    state.compilerBuilt=false; // clean source must now be rebuilt using the trusted anchor
+    setStage(4,'Break the chain of trust','Introduce an independently trusted compiler T. Use T to rebuild clean compiler.c, then use the trusted result to rebuild login.c.','TRUST ANCHOR');
+    $('compilerObservation').className='callout good';
+    $('compilerObservation').textContent='A new trust anchor is available. The next rebuild will no longer pass through the compromised C₀.';
+    $('conceptTakeaway').textContent='Trust must ultimately be anchored outside the compromised chain.';
+    $('conceptDetail').textContent='The simulation uses a known-trusted compiler T; real systems may also use independent verification techniques.';
+    log('T','Introduced an <strong>independently trusted compiler T</strong> to break the self-reproducing chain.');
+    update();
+  };
+
+  $('finalBuildBtn').onclick=()=>{
+    state.compilerBuilt=true;
+    state.loginBuilt=true;
+    state.finished=true;
+    setStage(4,'Trust restored','Trusted T builds clean compiler.c → trusted compiler builds clean login.c → the hidden behavior disappears.','COMPLETE');
+    $('loginObservation').className='callout good';
+    $('loginObservation').innerHTML='The special password is now denied. Executable behavior again matches the clean login source.';
+    $('compilerObservation').className='callout good';
+    $('compilerObservation').innerHTML='The rebuilt compiler no longer carries the hidden triggers.';
+    $('loopNote').innerHTML='Trusted T → clean <code>compiler.c</code> → trusted compiler → clean <code>login.c</code> → trusted login binary.';
+    log('✓','Rebuilt the clean chain from trusted T. <strong>The hidden behavior is gone.</strong>');
+    update();
+    setTimeout(()=>$('debrief').scrollIntoView({behavior:'smooth',block:'center'}),100);
+  };
+
+  $('revealBtn').onclick=()=>{
+    state.reveal=!state.reveal;
+    $('revealBtn').textContent=state.reveal?'Hide ground truth':'Instructor: reveal ground truth';
+    log('i',state.reveal?'Instructor ground truth revealed.':'Ground truth hidden again.');
+    update();
+  };
+
+  $('resetBtn').onclick=()=>{
+    Object.assign(state,{
+      stage:1,loginInspected:false,loginClean:false,prediction:null,loginBuilt:false,
+      compilerInvestigated:false,compilerClean:false,compilerBuilt:false,trustedAnchor:false,
+      finished:false,reveal:false
+    });
+    $('logList').innerHTML='';
+    document.querySelectorAll('input[name=prediction]').forEach(x=>x.checked=false);
+    $('predictionFeedback').textContent='';
+    $('loginObservation').className='callout info';
+    $('loginObservation').textContent='Clean the source and rebuild the program. Then test the binary rather than assuming the fix worked.';
+    $('compilerObservation').className='callout info';
+    $('compilerObservation').textContent='This becomes relevant only after the login binary behaves differently from its clean source.';
+    $('loopNote').textContent='The key question is not only “Is the source clean?” but also “What translated that source into the executable artifact?”';
+    $('conceptTakeaway').textContent='A source audit establishes properties of the source you inspected—not automatically of the binary you execute.';
+    $('conceptDetail').textContent='Use the experiment to discover which other artifact must be trusted before source-level reasoning carries through to execution.';
+    $('revealBtn').textContent='Instructor: reveal ground truth';
+    setStage(1,'Audit the login program','Inspect the source, remove the obvious backdoor, and predict what will happen when you rebuild it.','SOURCE AUDIT');
+    log('→','Lab reset. Begin by auditing <strong>login.c</strong>.');
+    update();
+  };
+
+  log('→','Begin by auditing <strong>login.c</strong>. Do not assume anything yet about the compiler.');
+  update();
+})();
+</script>
+</body>
+</html>
