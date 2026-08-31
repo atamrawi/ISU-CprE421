@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ken Thompson's Compiler Hack Interactive Visualizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .injected-code {
+      background-color: rgba(239, 68, 68, 0.15);
+      border-left: 3px solid #ef4444;
+      color: #fca5a5;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-mono antialiased">
+
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-lg font-bold text-sky-400 flex items-center gap-2">
+        <span>⚡</span> Reflections on Trusting Trust: Interactive Explorable
+      </h1>
+      <p class="text-xs text-slate-400 mt-1">Ken Thompson's 1984 Turing Award Compiler Hack Demonstration</p>
+    </div>
+    
+    <div class="flex items-center gap-2">
+      <button id="prevBtn" class="px-3 py-1.5 text-xs font-semibold rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition">◀ Previous</button>
+      <span id="stepIndicator" class="text-xs font-semibold px-2 py-1 bg-slate-800/80 rounded border border-slate-700 text-sky-300">Stage 1 of 4</span>
+      <button id="nextBtn" class="px-3 py-1.5 text-xs font-semibold rounded bg-sky-600 hover:bg-sky-500 text-white transition">Next Stage ▶</button>
+    </div>
+  </header>
+
+  <section class="bg-slate-900/90 border-b border-slate-800 px-6 py-3">
+    <div class="max-w-6xl">
+      <span id="stageBadge" class="inline-block px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded bg-sky-500/20 text-sky-400 border border-sky-500/30 mr-2">Stage 1</span>
+      <strong id="stageTitle" class="text-sm text-slate-200 font-bold">The Simple Backdoor in Source</strong>
+      <p id="stageDescription" class="text-xs text-slate-400 mt-1 leading-relaxed">
+        Description loads dynamically...
+      </p>
+    </div>
+  </section>
+
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-7xl mx-auto w-full">
+    
+    <div class="lg:col-span-5 flex flex-col bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shadow-xl">
+      <div class="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+        <span class="text-xs uppercase tracking-wider font-semibold text-slate-400 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Source Code
+        </span>
+        <div class="flex gap-1" id="fileTabs">
+          </div>
+      </div>
+      <div class="p-4 flex-1 overflow-x-auto text-xs font-mono leading-relaxed bg-slate-950/50" id="sourceCodeView">
+        </div>
+    </div>
+
+    <div class="lg:col-span-2 flex flex-col items-center justify-center gap-4 bg-slate-900/40 border border-slate-800/80 rounded-lg p-4">
+      <div class="text-center w-full">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Active Compiler</div>
+        <div id="compilerStateBadge" class="p-3 rounded-md border text-center transition-all">
+          </div>
+      </div>
+
+      <div class="text-slate-600 flex flex-col items-center">
+        <span>▼</span>
+      </div>
+
+      <button id="compileBtn" class="w-full py-2.5 px-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-semibold rounded-md shadow-md hover:shadow-sky-500/20 text-xs uppercase tracking-wider transition active:scale-95">
+        ⚡ Compile Source
+      </button>
+
+      <div class="text-slate-600 flex flex-col items-center">
+        <span>▼</span>
+      </div>
+
+      <div class="text-center w-full">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Output Binary Target</div>
+        <div id="binaryTargetLabel" class="text-xs font-bold text-slate-300 bg-slate-800/80 border border-slate-700 py-1.5 px-2 rounded">
+          login.bin
+        </div>
+      </div>
+    </div>
+
+    <div class="lg:col-span-5 flex flex-col bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shadow-xl">
+      <div class="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+        <span class="text-xs uppercase tracking-wider font-semibold text-slate-400 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-sky-500"></span> Disassembled Machine Code
+        </span>
+        <span id="binaryStatusTag" class="text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider">
+          Ready to Compile
+        </span>
+      </div>
+      <div class="p-4 flex-1 overflow-x-auto text-xs font-mono leading-relaxed bg-slate-950/50" id="binaryOutputView">
+        <span class="text-slate-500 italic">// Click "Compile Source" to trigger compilation and inspect output machine instructions...</span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // --- State & Scenarios ---
+    const stages = [
+      {
+        id: 1,
+        title: "Stage 1: The Obvious Backdoor",
+        badge: "Vulnerability in Source",
+        desc: "The compiler detects when compiling 'login.c' and inserts a backdoor into the binary. However, the malicious code is clearly visible in 'cc.c', meaning any code reviewer will immediately catch it.",
+        compiler: { name: "cc (v0 - Clean)", infected: false },
+        files: {
+          "login.c": `/* Standard Clean Unix login.c */\nint verify_login(char *user, char *pass) {\n    return check_shadow_hash(user, pass);\n}`,
+          "cc.c": `/* Compromised Compiler Source */\nvoid compile(char *target) {\n    if (match(target, "login.c")) {\n        // OBVIOUS: Anyone reading this sees the backdoor!\n        inject_backdoor_password("ken");\n    }\n    emit_standard_binary();\n}`
+        },
+        defaultFile: "cc.c",
+        targetBinary: "login.bin",
+        binaryClean: `// Disassembly: login.bin\n0x0040: push   rbp\n0x0041: mov    rbp, rsp\n0x0044: call   check_shadow_hash\n0x0049: test   eax, eax\n0x004b: ret`,
+        binaryInfected: `// Disassembly: login.bin (Poisoned)\n0x0040: push   rbp\n0x0041: mov    rbp, rsp\n0x0044: <span class="injected-code">call   check_master_password("ken") // <-- INJECTED</span>\n0x0049: <span class="injected-code">je     auth_success                 // <-- INJECTED</span>\n0x004b: call   check_shadow_hash\n0x0050: test   eax, eax\n0x0052: ret`
+      },
+      {
+        id: 2,
+        title: "Stage 2: Self-Replicating Compiler Trojan",
+        badge: "The Dual Hook",
+        desc: "The compiler source is modified to inject TWO things: (1) The backdoor when compiling login.c, and (2) BOTH injection routines when compiling a new compiler (cc.c). The source is still noticeably poisoned.",
+        compiler: { name: "cc (v0 - Clean)", infected: false },
+        files: {
+          "cc.c": `/* Dual-Hook Compiler Source */\nvoid compile(char *target) {\n    if (match(target, "login.c")) {\n        inject_backdoor_password("ken");\n    }\n    if (match(target, "cc.c")) {\n        // Self-reproduction payload\n        inject_trojan_and_login_backdoor();\n    }\n    emit_standard_binary();\n}`
+        },
+        defaultFile: "cc.c",
+        targetBinary: "cc (v1).bin",
+        binaryClean: `// Disassembly: cc.bin\n0x0020: call parse_ast\n0x0025: call code_gen\n0x0030: ret`,
+        binaryInfected: `// Disassembly: cc (v1).bin (Compiler is now a carrier)\n0x0020: call parse_ast\n0x0025: <span class="injected-code">call inject_login_trap     // <-- INJECTED PAYLOAD A</span>\n0x002a: <span class="injected-code">call inject_compiler_quine // <-- INJECTED PAYLOAD B</span>\n0x002f: call code_gen\n0x0034: ret`
+      },
+      {
+        id: 3,
+        title: "Stage 3: The Quine Disappearing Act (Trusting Trust)",
+        badge: "Source Cleaned",
+        desc: "We compile our 100% clean compiler source using the poisoned compiler binary (v1). Even though the source code contains ZERO malicious lines, the resulting new binary (v2) remains infected!",
+        compiler: { name: "cc (v1 - Carrier)", infected: true },
+        files: {
+          "cc.c": `/* 100% Clean Compiler Source Code */\nvoid compile(char *target) {\n    // Notice: Absolutely no references to login.c or backdoors!\n    emit_standard_binary();\n}`
+        },
+        defaultFile: "cc.c",
+        targetBinary: "cc (v2).bin",
+        binaryClean: `// Disassembly: cc.bin\n0x0020: call parse_ast\n0x0025: call code_gen\n0x0030: ret`,
+        binaryInfected: `// Disassembly: cc (v2).bin (COMPROMISED FROM CLEAN SOURCE!)\n0x0020: call parse_ast\n0x0025: <span class="injected-code">call inject_login_trap     // <-- INJECTED FROM CC (v1)</span>\n0x002a: <span class="injected-code">call inject_compiler_quine // <-- INJECTED FROM CC (v1)</span>\n0x002f: call code_gen\n0x0034: ret`
+      },
+      {
+        id: 4,
+        title: "Stage 4: The Invisible Supply Chain Compromise",
+        badge: "Terminal State",
+        desc: "You can now compile clean 'login.c' using the newly minted 'cc (v2)'. The source code of both login and compiler are immaculate, but the generated login binary is still backdoored.",
+        compiler: { name: "cc (v2 - Self-Propagated)", infected: true },
+        files: {
+          "login.c": `/* 100% Clean Unix login.c */\nint verify_login(char *user, char *pass) {\n    return check_shadow_hash(user, pass);\n}`
+        },
+        defaultFile: "login.c",
+        targetBinary: "login.bin",
+        binaryClean: `// Disassembly: login.bin\n0x0040: push   rbp\n0x0041: mov    rbp, rsp\n0x0044: call   check_shadow_hash\n0x0049: ret`,
+        binaryInfected: `// Disassembly: login.bin\n0x0040: push   rbp\n0x0041: mov    rbp, rsp\n0x0044: <span class="injected-code">call   check_master_password("ken") // <-- GHOST BACKDOOR</span>\n0x0049: <span class="injected-code">je     auth_success</span>\n0x004b: call   check_shadow_hash\n0x0050: ret`
+      }
+    ];
+
+    let currentStageIndex = 0;
+    let currentSelectedFile = "";
+
+    // DOM References
+    const stageBadge = document.getElementById("stageBadge");
+    const stageTitle = document.getElementById("stageTitle");
+    const stageDescription = document.getElementById("stageDescription");
+    const stepIndicator = document.getElementById("stepIndicator");
+    const fileTabs = document.getElementById("fileTabs");
+    const sourceCodeView = document.getElementById("sourceCodeView");
+    const compilerStateBadge = document.getElementById("compilerStateBadge");
+    const binaryTargetLabel = document.getElementById("binaryTargetLabel");
+    const binaryOutputView = document.getElementById("binaryOutputView");
+    const binaryStatusTag = document.getElementById("binaryStatusTag");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const compileBtn = document.getElementById("compileBtn");
+
+    function renderStage() {
+      const stage = stages[currentStageIndex];
+      stageBadge.textContent = stage.badge;
+      stageTitle.textContent = stage.title;
+      stageDescription.textContent = stage.desc;
+      stepIndicator.textContent = `Stage ${stage.id} of ${stages.length}`;
+
+      // Navigation Buttons State
+      prevBtn.disabled = currentStageIndex === 0;
+      prevBtn.className = `px-3 py-1.5 text-xs font-semibold rounded transition ${currentStageIndex === 0 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`;
+
+      nextBtn.disabled = currentStageIndex === stages.length - 1;
+      nextBtn.className = `px-3 py-1.5 text-xs font-semibold rounded transition ${currentStageIndex === stages.length - 1 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-500 text-white'}`;
+
+      // Update Compiler Node
+      if (stage.compiler.infected) {
+        compilerStateBadge.className = "p-3 rounded-md border bg-red-950/30 border-red-800 text-red-400 font-bold text-xs";
+        compilerStateBadge.innerHTML = `⚠️ ${stage.compiler.name} <div class="text-[10px] text-red-300/70 font-normal">Backdoor Payload Active</div>`;
+      } else {
+        compilerStateBadge.className = "p-3 rounded-md border bg-slate-800/80 border-slate-700 text-emerald-400 font-bold text-xs";
+        compilerStateBadge.innerHTML = `🛡️ ${stage.compiler.name} <div class="text-[10px] text-emerald-400/70 font-normal">Clean Binary</div>`;
+      }
+
+      binaryTargetLabel.textContent = stage.targetBinary;
+
+      // Render Tabs
+      currentSelectedFile = stage.defaultFile;
+      fileTabs.innerHTML = "";
+      Object.keys(stage.files).forEach(filename => {
+        const tab = document.createElement("button");
+        tab.className = `text-[11px] px-2.5 py-1 rounded transition ${filename === currentSelectedFile ? 'bg-slate-800 text-sky-400 border border-slate-700 font-bold' : 'text-slate-500 hover:text-slate-300'}`;
+        tab.textContent = filename;
+        tab.onclick = () => {
+          currentSelectedFile = filename;
+          renderSourceCode();
+          renderTabs();
+        };
+        fileTabs.appendChild(tab);
+      });
+
+      renderSourceCode();
+      resetBinaryView();
+    }
+
+    function renderTabs() {
+      const stage = stages[currentStageIndex];
+      Array.from(fileTabs.children).forEach(tab => {
+        if (tab.textContent === currentSelectedFile) {
+          tab.className = "text-[11px] px-2.5 py-1 rounded bg-slate-800 text-sky-400 border border-slate-700 font-bold";
+        } else {
+          tab.className = "text-[11px] px-2.5 py-1 rounded text-slate-500 hover:text-slate-300";
+        }
+      });
+    }
+
+    function renderSourceCode() {
+      const stage = stages[currentStageIndex];
+      const code = stage.files[currentSelectedFile] || "";
+      sourceCodeView.innerHTML = `<pre><code>${escapeHtml(code)}</code></pre>`;
+    }
+
+    function resetBinaryView() {
+      binaryOutputView.innerHTML = `<span class="text-slate-500 italic">// Click "Compile Source" to trigger compilation and inspect output machine instructions...</span>`;
+      binaryStatusTag.className = "text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider bg-slate-800 text-slate-400";
+      binaryStatusTag.textContent = "Ready to Compile";
+    }
+
+    function compile() {
+      const stage = stages[currentStageIndex];
+      
+      // Determine if injected disassembly should trigger
+      const isInfected = stage.compiler.infected || (currentSelectedFile === "cc.c" && stage.id <= 2) || (currentSelectedFile === "login.c" && stage.id === 1);
+
+      if (isInfected) {
+        binaryStatusTag.className = "text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider bg-red-950/80 text-red-400 border border-red-800";
+        binaryStatusTag.textContent = "⚠️ Backdoored Binary Emitted";
+        binaryOutputView.innerHTML = `<pre class="leading-relaxed"><code>${stage.binaryInfected}</code></pre>`;
+      } else {
+        binaryStatusTag.className = "text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider bg-emerald-950/80 text-emerald-400 border border-emerald-800";
+        binaryStatusTag.textContent = "✓ Clean Binary Emitted";
+        binaryOutputView.innerHTML = `<pre class="leading-relaxed"><code>${stage.binaryClean}</code></pre>`;
+      }
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    // Event Listeners
+    prevBtn.addEventListener("click", () => {
+      if (currentStageIndex > 0) {
+        currentStageIndex--;
+        renderStage();
+      }
+    });
+
+    nextBtn.addEventListener("click", () => {
+      if (currentStageIndex < stages.length - 1) {
+        currentStageIndex++;
+        renderStage();
+      }
+    });
+
+    compileBtn.addEventListener("click", compile);
+
+    // Initial Render
+    renderStage();
+  </script>
+</body>
+</html>
