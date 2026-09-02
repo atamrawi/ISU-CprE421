@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Why Does Java Print 5 Instead of 1000?</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --panel:#121a2d;
+    --panel2:#18233c;
+    --text:#edf3ff;
+    --muted:#9fb0cf;
+    --accent:#71a7ff;
+    --good:#66d19e;
+    --warn:#ffcc66;
+    --bad:#ff7b7b;
+    --border:#2a395c;
+    --code:#0a0f1c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:linear-gradient(180deg,#090e1b 0%,#0d1425 100%);
+    color:var(--text);
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:26px}
+  h1{font-size:clamp(28px,4vw,48px);margin:0 0 8px}
+  h2{margin:0 0 12px;font-size:22px}
+  p{line-height:1.55}
+  .sub{color:var(--muted);max-width:900px}
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:18px;
+    margin-top:22px;
+  }
+  .card{
+    background:rgba(18,26,45,.95);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:18px;
+    box-shadow:0 12px 35px rgba(0,0,0,.22);
+  }
+  .wide{grid-column:1/-1}
+  pre{
+    background:var(--code);
+    border:1px solid #26324f;
+    padding:16px;
+    overflow:auto;
+    border-radius:14px;
+    font-size:15px;
+    line-height:1.55;
+  }
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+  .hl-bad{color:var(--bad);font-weight:700}
+  .hl-good{color:var(--good);font-weight:700}
+  .controls{
+    display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;
+  }
+  button{
+    appearance:none;border:1px solid #3d5684;background:#1a2847;color:white;
+    padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;
+  }
+  button:hover{background:#22355e}
+  button.primary{background:#265aa8;border-color:#3c76cc}
+  button.primary:hover{background:#2e67bc}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .step-title{font-size:18px;font-weight:800;margin-bottom:8px}
+  .equation{
+    font-family:"SFMono-Regular",Consolas,monospace;
+    font-size:clamp(19px,2.3vw,28px);
+    padding:15px;border-radius:12px;background:#0b1120;border:1px solid #293857;
+    overflow-x:auto;white-space:nowrap;
+  }
+  .meta{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;
+  }
+  .metric{
+    background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;
+  }
+  .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .value{font-size:19px;font-weight:800;margin-top:4px;word-break:break-all}
+  .bar{
+    height:18px;background:#0a0f1b;border-radius:999px;border:1px solid #2d3b5b;
+    overflow:hidden;margin-top:14px;
+  }
+  .fill{height:100%;width:0%;transition:width .35s ease;background:linear-gradient(90deg,#66d19e,#ffcc66,#ff7b7b)}
+  .limit-line{margin-top:8px;color:var(--muted);font-size:13px}
+  .callout{
+    border-left:4px solid var(--warn);padding:11px 14px;background:#171b28;border-radius:10px;margin-top:12px;
+  }
+  .result{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    background:#0b1120;border:1px solid #2b3b5d;border-radius:14px;padding:15px;margin-top:12px;
+  }
+  .big{font-size:42px;font-weight:900}
+  .bad{color:var(--bad)} .good{color:var(--good)} .warn{color:var(--warn)}
+  .timeline{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .chip{
+    border:1px solid var(--border);background:#10182a;color:var(--muted);
+    border-radius:999px;padding:7px 10px;font-family:monospace;font-size:13px;
+  }
+  .chip.active{color:white;border-color:#6a8fcb;background:#203253}
+  .chip.overflow{border-color:#8b4242;color:#ffd2d2;background:#3b1b22}
+  .toggle-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  select{
+    background:#0f1728;color:white;border:1px solid #384b70;border-radius:10px;padding:9px 12px;
+  }
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{padding:10px;border-bottom:1px solid #263654;text-align:left}
+  th{color:#b9c7df}
+  footer{color:var(--muted);font-size:13px;text-align:center;padding:24px 0}
+  @media(max-width:800px){
+    .grid{grid-template-columns:1fr}
+    .wide{grid-column:auto}
+    .meta{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Why does Java print <span class="bad">5</span> instead of <span class="good">1000</span>?</h1>
+    <p class="sub">
+      This visualizer walks through the multiplication exactly as Java evaluates it.
+      The surprise: assigning the result to a <code>long</code> does not make the earlier arithmetic use <code>long</code>.
+    </p>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>The puzzle</h2>
+      <pre><code>final long MICROS_PER_DAY =
+    24 * 60 * 60 * 1000 * 1000;
+
+final long MILLIS_PER_DAY =
+    24 * 60 * 60 * 1000;
+
+System.out.println(
+    MICROS_PER_DAY / MILLIS_PER_DAY
+);</code></pre>
+      <div class="callout">
+        Every literal here — <code>24</code>, <code>60</code>, <code>1000</code> — is an <strong>int literal</strong>.
+        Therefore the multiplication is performed as 32-bit signed <code>int</code> arithmetic.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Expected vs. actual</h2>
+      <div class="result">
+        <div><div class="label">Mathematically expected</div><div class="big good">1000</div></div>
+        <div><div class="label">Java actually prints</div><div class="big bad">5</div></div>
+      </div>
+      <p class="sub">
+        One day has 86,400,000 milliseconds and 86,400,000,000 microseconds.
+        But 86,400,000,000 cannot fit in a signed 32-bit <code>int</code>.
+      </p>
+      <table>
+        <tr><th>Type</th><th>Range</th></tr>
+        <tr><td><code>int</code></td><td>−2,147,483,648 to 2,147,483,647</td></tr>
+        <tr><td><code>long</code></td><td>far larger — enough for this calculation</td></tr>
+      </table>
+    </section>
+
+    <section class="card wide">
+      <h2>Step through <code>MICROS_PER_DAY</code></h2>
+      <div class="timeline" id="timeline"></div>
+
+      <div class="step-title" id="stepTitle"></div>
+      <div class="equation" id="equation"></div>
+
+      <div class="meta">
+        <div class="metric">
+          <div class="label">Mathematical value</div>
+          <div class="value" id="mathValue"></div>
+        </div>
+        <div class="metric">
+          <div class="label">32-bit Java int value</div>
+          <div class="value" id="intValue"></div>
+        </div>
+        <div class="metric">
+          <div class="label">Status</div>
+          <div class="value" id="status"></div>
+        </div>
+      </div>
+
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="limit-line">Bar compares the mathematical magnitude with <code>Integer.MAX_VALUE = 2,147,483,647</code>.</div>
+
+      <div class="controls">
+        <button id="prev">← Previous</button>
+        <button class="primary" id="next">Next →</button>
+        <button id="auto">Auto Play</button>
+        <button id="reset">Reset</button>
+      </div>
+
+      <div class="callout" id="explanation"></div>
+    </section>
+
+    <section class="card">
+      <h2>What overflow does</h2>
+      <p>
+        Java <code>int</code> arithmetic uses two's-complement wraparound. Conceptually, only the low 32 bits are kept.
+      </p>
+      <div class="equation">86,400,000,000 mod 2<sup>32</sup> = 500,654,080</div>
+      <p class="sub">
+        So the overflowing expression becomes <strong class="bad">500,654,080</strong>.
+        Only then is that already-wrong value widened to <code>long</code>.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Why the denominator survives</h2>
+      <div class="equation">24 × 60 × 60 × 1000 = 86,400,000</div>
+      <p>
+        <strong class="good">86,400,000</strong> fits comfortably inside a signed 32-bit <code>int</code>,
+        so <code>MILLIS_PER_DAY</code> is computed correctly.
+      </p>
+      <div class="equation">500,654,080 ÷ 86,400,000 = 5</div>
+      <p class="sub">Integer division discards the fractional part, so the printed result is <strong class="bad">5</strong>.</p>
+    </section>
+
+    <section class="card wide">
+      <h2>Fix it interactively</h2>
+      <div class="toggle-row">
+        <label for="fix">Choose expression:</label>
+        <select id="fix">
+          <option value="bad">24 * 60 * 60 * 1000 * 1000</option>
+          <option value="long1">24L * 60 * 60 * 1000 * 1000</option>
+          <option value="long2">24 * 60 * 60 * 1000 * 1000L</option>
+          <option value="cast">(long)(24 * 60 * 60 * 1000 * 1000)</option>
+        </select>
+      </div>
+      <div class="result">
+        <div>
+          <div class="label">Computed MICROS_PER_DAY</div>
+          <div class="value" id="fixMicro"></div>
+        </div>
+        <div>
+          <div class="label">Printed ratio</div>
+          <div class="big" id="fixRatio"></div>
+        </div>
+      </div>
+      <div class="callout" id="fixExplanation"></div>
+    </section>
+
+    <section class="card wide">
+      <h2>The rule to remember</h2>
+      <div class="equation"><span class="warn">The type of the destination variable does not determine the type of the arithmetic expression.</span></div>
+      <p>
+        Java determines the expression type from its operands. If all operands are <code>int</code>,
+        the arithmetic is <code>int</code>. Put a <code>L</code> on an operand <em>before the overflow occurs</em>
+        so Java promotes the calculation to <code>long</code>.
+      </p>
+      <pre><code><span class="hl-good">final long MICROS_PER_DAY = 24L * 60 * 60 * 1000 * 1000;</span>
+final long MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
+
+System.out.println(MICROS_PER_DAY / MILLIS_PER_DAY);
+// 1000</code></pre>
+    </section>
+  </div>
+  <footer>Interactive Java integer-overflow visualizer</footer>
+</div>
+
+<script>
+const INT_MAX = 2147483647;
+const MOD = 4294967296;
+
+function toInt32Number(n){
+  let x = ((n % MOD) + MOD) % MOD;
+  if (x >= 2147483648) x -= MOD;
+  return x;
+}
+
+const factors = [24,60,60,1000,1000];
+const steps = [];
+let math = factors[0];
+let javaInt = factors[0];
+steps.push({
+  expr:"24",
+  math,
+  javaInt,
+  overflow:false,
+  text:"The first literal is an int. Nothing surprising yet."
+});
+for(let i=1;i<factors.length;i++){
+  const prevMath = math;
+  math = math * factors[i];
+  const raw = javaInt * factors[i];
+  const nextInt = toInt32Number(raw);
+  const overflow = raw > INT_MAX || raw < -2147483648;
+  javaInt = nextInt;
+  steps.push({
+    expr:factors.slice(0,i+1).join(" × "),
+    math,
+    javaInt,
+    overflow,
+    text: overflow
+      ? "Overflow occurs here. The mathematical result no longer fits in a 32-bit signed int, so Java wraps the value before it is ever assigned to the long variable."
+      : "This intermediate result still fits in a 32-bit signed int, so Java keeps evaluating the expression as int arithmetic."
+  });
+}
+
+let index = 0;
+let timer = null;
+
+function fmt(n){ return Number(n).toLocaleString("en-US"); }
+
+function render(){
+  const s = steps[index];
+  document.getElementById("stepTitle").textContent = `Step ${index+1} of ${steps.length}`;
+  document.getElementById("equation").innerHTML =
+    `${s.expr} = <strong class="${s.overflow ? "bad":"good"}">${fmt(s.javaInt)}</strong>`;
+  document.getElementById("mathValue").textContent = fmt(s.math);
+  document.getElementById("intValue").textContent = fmt(s.javaInt);
+  const status = document.getElementById("status");
+  status.textContent = s.overflow ? "OVERFLOW — wrapped" : "Fits in int";
+  status.className = "value " + (s.overflow ? "bad":"good");
+  document.getElementById("explanation").innerHTML = s.text;
+
+  const pct = Math.min(100, Math.abs(s.math) / INT_MAX * 100);
+  document.getElementById("fill").style.width = pct + "%";
+
+  document.getElementById("prev").disabled = index===0;
+  document.getElementById("next").disabled = index===steps.length-1;
+
+  document.querySelectorAll(".chip").forEach((c,i)=>{
+    c.classList.toggle("active",i===index);
+  });
+}
+
+function buildTimeline(){
+  const t = document.getElementById("timeline");
+  steps.forEach((s,i)=>{
+    const c=document.createElement("div");
+    c.className="chip"+(s.overflow?" overflow":"");
+    c.textContent=s.expr;
+    c.onclick=()=>{index=i;stopAuto();render();};
+    t.appendChild(c);
+  });
+}
+
+function stopAuto(){
+  if(timer){ clearInterval(timer); timer=null; }
+  document.getElementById("auto").textContent="Auto Play";
+}
+
+document.getElementById("next").onclick=()=>{ if(index<steps.length-1){index++;render();} };
+document.getElementById("prev").onclick=()=>{ if(index>0){index--;render();} };
+document.getElementById("reset").onclick=()=>{stopAuto();index=0;render();};
+document.getElementById("auto").onclick=()=>{
+  if(timer){stopAuto();return;}
+  document.getElementById("auto").textContent="Pause";
+  timer=setInterval(()=>{
+    if(index<steps.length-1){index++;render();}
+    else stopAuto();
+  },1100);
+};
+
+const fix = document.getElementById("fix");
+function renderFix(){
+  const choice=fix.value;
+  const micro=document.getElementById("fixMicro");
+  const ratio=document.getElementById("fixRatio");
+  const explanation=document.getElementById("fixExplanation");
+
+  if(choice==="bad"){
+    micro.textContent=fmt(500654080);
+    ratio.textContent="5";
+    ratio.className="big bad";
+    explanation.innerHTML="<strong>Incorrect.</strong> All operands are int, so overflow happens during multiplication.";
+  } else if(choice==="long1"){
+    micro.textContent=fmt(86400000000);
+    ratio.textContent="1000";
+    ratio.className="big good";
+    explanation.innerHTML="<strong>Correct.</strong> Starting with <code>24L</code> promotes the very first multiplication to <code>long</code>, and the rest of the chain stays long.";
+  } else if(choice==="long2"){
+    micro.textContent=fmt(86400000000);
+    ratio.textContent="1000";
+    ratio.className="big good";
+    explanation.innerHTML="<strong>Correct in this exact expression.</strong> The multiplication reaches <code>86,400,000</code> before the final <code>* 1000L</code>, and 86,400,000 still fits in int. The final operation is then promoted to long before producing 86,400,000,000.";
+  } else {
+    micro.textContent=fmt(500654080);
+    ratio.textContent="5";
+    ratio.className="big bad";
+    explanation.innerHTML="<strong>Still incorrect.</strong> The cast happens after the entire parenthesized int expression has already overflowed. Casting the damaged result to long cannot undo the overflow.";
+  }
+}
+fix.onchange=renderFix;
+
+buildTimeline();
+render();
+renderFix();
+</script>
+</body>
+</html>
