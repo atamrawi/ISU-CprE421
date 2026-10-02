@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Use-After-Free Visualization: auth / service</title>
+<style>
+  :root{
+    --bg:#0a1020;
+    --panel:#111a2f;
+    --panel2:#16213b;
+    --text:#eef2ff;
+    --muted:#aeb9d8;
+    --line:#2a3556;
+    --accent:#7dd3fc;
+    --good:#86efac;
+    --warn:#facc15;
+    --bad:#fb7185;
+    --purple:#c084fc;
+    --heap:#60a5fa;
+    --green:#34d399;
+    --orange:#fb923c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:linear-gradient(180deg,#08101d,#0a1020 35%, #0a1020);
+    color:var(--text);
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+  main{max-width:1250px;margin:auto;padding:24px}
+  h1{margin:.2rem 0 .4rem;font-size:clamp(1.6rem,3vw,2.4rem)}
+  .lead{margin:0 0 18px;color:var(--muted);line-height:1.6;max-width:980px}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+  button{
+    border:1px solid var(--line);
+    background:#17233f;
+    color:var(--text);
+    border-radius:10px;
+    padding:10px 14px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  button.primary{background:#11445a;border-color:#38bdf8}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .stepbar{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0 18px}
+  .stepdot{height:8px;border-radius:999px;background:#26324f}
+  .stepdot.done{background:var(--accent)}
+  .layout{display:grid;grid-template-columns:1.05fr 1fr;gap:16px}
+  @media(max-width:980px){.layout{grid-template-columns:1fr}}
+  .card{
+    background:rgba(17,26,47,.95);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:16px;
+  }
+  .title{
+    font-size:.8rem;
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    color:var(--muted);
+    font-weight:900;
+    margin-bottom:10px;
+  }
+  .stephead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .stepname{font-size:1.15rem;font-weight:900}
+  .stepnum{font-size:.9rem;color:var(--muted)}
+  .explain{line-height:1.62;color:#dce5fb;margin:.55rem 0 0}
+  pre{margin:0;overflow:auto;font-size:13px;line-height:1.65}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .line{
+    display:block;
+    padding:0 8px;
+    border-left:3px solid transparent;
+    white-space:pre;
+  }
+  .line.active{background:#163152;border-left-color:var(--accent)}
+  .line.emph{box-shadow:inset 0 0 0 1px rgba(125,211,252,.3)}
+  .memory{display:grid;grid-template-columns:1fr 1.5fr;gap:16px}
+  @media(max-width:720px){.memory{grid-template-columns:1fr}}
+  .zone{
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+    min-height:280px;
+  }
+  .zone h3{margin:0 0 12px;font-size:1rem}
+  .globals h3{color:var(--purple)}
+  .heap h3{color:var(--heap)}
+  .cell{
+    background:#0e1628;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    margin:9px 0;
+  }
+  .label{
+    font-size:.74rem;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--muted);
+  }
+  .value{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-weight:800;
+    margin-top:5px;
+    word-break:break-word;
+  }
+  .arrow{
+    text-align:center;
+    font-size:1.8rem;
+    color:var(--accent);
+    font-weight:900;
+  }
+  .heapblock{
+    border:2px solid var(--heap);
+    background:#0e1c34;
+    border-radius:14px;
+    padding:14px;
+    min-height:190px;
+    transition:.2s;
+  }
+  .heapblock.freed{
+    border-style:dashed;
+    border-color:#94a3b8;
+    background:#151a28;
+  }
+  .heapblock.reused{
+    border-color:var(--orange);
+    background:#2b1a0d;
+  }
+  .heapblock.attack{
+    border-color:var(--bad);
+    background:#2c1320;
+  }
+  .badge{
+    display:inline-block;
+    font-size:.74rem;
+    font-weight:900;
+    border:1px solid currentColor;
+    border-radius:999px;
+    padding:4px 9px;
+    margin-bottom:10px;
+  }
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .callout{
+    margin-top:14px;
+    padding:14px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    line-height:1.58;
+  }
+  .callout.info{background:#0b2132;border-color:#38bdf8}
+  .callout.warn{background:#2b220a;border-color:#f59e0b}
+  .callout.danger{background:#2b1320;border-color:var(--bad)}
+  .callout.ok{background:#112416;border-color:#22c55e}
+  .transcript{
+    background:#0b1120;
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px;
+    line-height:1.6;
+    white-space:pre-wrap;
+  }
+  .bytesWrap{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+  @media(max-width:700px){.bytesWrap{grid-template-columns:1fr 1fr}}
+  .bytes{
+    background:#0f1728;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+  }
+  .bytes .head{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .offset{
+    display:inline-block;
+    min-width:54px;
+    color:#93c5fd;
+    font-weight:800;
+  }
+  .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:.85rem}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
+  .footerNote{margin-top:16px;font-size:.9rem;color:var(--muted);line-height:1.55}
+</style>
+</head>
+<body>
+<main>
+  <h1>Interactive Visualization: Use-After-Free in <code>auth</code> / <code>service</code></h1>
+  <p class="lead">
+    This walkthrough focuses <b>only on the use-after-free behavior</b>: the <code>auth</code> pointer is freed,
+    but it is not cleared; later, a <code>service</code> allocation can reuse the same heap chunk; then
+    <code>login</code> reads <code>auth-&gt;auth</code> through the stale pointer.
+  </p>
+
+  <div class="controls">
+    <button id="prev">← Previous</button>
+    <button id="next" class="primary">Next step →</button>
+    <button id="reset">Reset</button>
+  </div>
+
+  <div class="stepbar" id="stepbar"></div>
+
+  <div class="layout">
+    <section class="card">
+      <div class="title">Relevant code path</div>
+      <pre id="code"></pre>
+    </section>
+
+    <section class="card">
+      <div class="stephead">
+        <div>
+          <div class="title">Current step</div>
+          <div id="stepname" class="stepname"></div>
+        </div>
+        <div id="stepnum" class="stepnum"></div>
+      </div>
+      <p id="explain" class="explain"></p>
+      <div id="stepcallout"></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <div class="title">Memory model</div>
+    <div class="memory">
+      <div class="zone globals">
+        <h3>Global variables</h3>
+        <div class="cell">
+          <div class="label">auth</div>
+          <div class="value" id="authPtr">(nil)</div>
+        </div>
+        <div class="cell">
+          <div class="label">service</div>
+          <div class="value" id="servicePtr">(nil)</div>
+        </div>
+        <div class="arrow" id="authArrow">↘</div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--purple)"></i>global pointer variable</span>
+          <span><i class="sw" style="background:var(--heap)"></i>heap object</span>
+          <span><i class="sw" style="background:var(--orange)"></i>reused by service</span>
+        </div>
+      </div>
+
+      <div class="zone heap">
+        <h3>Heap chunk at illustrative address <span class="mono">0x41414000</span></h3>
+        <div id="heapBlock" class="heapblock">
+          <div id="heapState" class="badge">No allocation yet</div>
+          <div class="label">Interpreted as struct auth</div>
+          <div id="structView" class="value">No live auth object</div>
+
+          <div class="bytesWrap">
+            <div class="bytes">
+              <div class="head">Bytes 0–15</div>
+              <div id="b0" class="mono">—</div>
+            </div>
+            <div class="bytes">
+              <div class="head">Bytes 16–31</div>
+              <div id="b1" class="mono">—</div>
+            </div>
+            <div class="bytes">
+              <div class="head">Bytes 32–35 → auth field</div>
+              <div id="b2" class="mono">—</div>
+            </div>
+            <div class="bytes">
+              <div class="head">Current owner</div>
+              <div id="owner" class="mono">none</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid2" style="margin-top:16px">
+    <section class="card">
+      <div class="title">Command transcript</div>
+      <div id="transcript" class="transcript"></div>
+    </section>
+
+    <section class="card">
+      <div class="title">Key teaching point</div>
+      <div class="callout info">
+        <b><code>free(auth)</code> does not set <code>auth</code> to <code>NULL</code>.</b><br>
+        It only tells the allocator that the heap object may be reused. The variable <code>auth</code> still contains the old address,
+        so it becomes a <b>dangling pointer</b>.
+      </div>
+      <div class="callout warn">
+        After <code>reset</code>, any dereference such as <code>auth-&gt;auth</code> is invalid. If a later allocation
+        reuses that chunk, the stale pointer may now interpret <b>new attacker-controlled data</b> as the old structure.
+      </div>
+      <div class="callout ok">
+        Defensive takeaway for students: after freeing a pointer that may still be referenced later, a common mitigation is
+        <span class="mono">free(auth); auth = NULL;</span> and then checking before use.
+      </div>
+    </section>
+  </div>
+
+  <p class="footerNote">
+    Addresses and byte layouts here are illustrative to explain the concept. The important idea is the aliasing:
+    <code>auth</code> still points to freed storage, and <code>service</code> later points to the same reused storage.
+  </p>
+</main>
+
+<script>
+(() => {
+  const source = [
+'struct auth {',
+'  char name[32];',
+'  int auth;',
+'};',
+'',
+'struct auth *auth;',
+'char *service;',
+'',
+'if(strncmp(line, "auth ", 5) == 0) {',
+'  auth = malloc(...);',
+'  strcpy(auth->name, line + 5);',
+'}',
+'if(strncmp(line, "reset", 5) == 0) {',
+'  free(auth);',
+'}',
+'if(strncmp(line, "service", 6) == 0) {',
+'  service = strdup(line + 7);',
+'}',
+'if(strncmp(line, "login", 5) == 0) {',
+'  if(auth->auth) {',
+'    printf("you have logged in already!");',
+'  }',
+'}'
+  ];
+
+  const attackString = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'; // 36 As
+
+  const steps = [
+    {
+      line:6,
+      name:'Step 1 — Initial state',
+      explain:'At program start, both global pointers are NULL. No heap object exists yet.',
+      authPtr:'(nil)',
+      servicePtr:'(nil)',
+      heapState:'No allocation yet',
+      heapClass:'',
+      owner:'none',
+      structView:'No live auth object',
+      b0:'—',
+      b1:'—',
+      b2:'—',
+      transcript:'[ auth = (nil), service = (nil) ]',
+      callout:'<div class="callout info"><b>Nothing dangerous yet.</b> The pointers do not reference any heap object.</div>'
+    },
+    {
+      line:10,
+      name:'Step 2 — User enters: auth peter',
+      explain:'The program allocates a heap chunk for an auth object and stores its address in the global pointer auth. The name field is filled with "peter", and auth->auth remains 0.',
+      authPtr:'0x41414000',
+      servicePtr:'(nil)',
+      heapState:'Allocated for auth object',
+      heapClass:'',
+      owner:'auth object',
+      structView:'name = "peter\\n"    |    auth = 0',
+      b0:'<span class="offset">0x00</span> 70 65 74 65 72 0a 00 ...',
+      b1:'<span class="offset">0x10</span> 00 00 00 00 00 00 00 ...',
+      b2:'<span class="offset">0x20</span> 00 00 00 00',
+      transcript:'[ auth = 0x41414000, service = (nil) ]\\nauth peter',
+      callout:'<div class="callout ok"><b>auth</b> now points to a valid heap object.</div>'
+    },
+    {
+      line:14,
+      name:'Step 3 — User enters: reset',
+      explain:'free(auth) ends the lifetime of that heap object, but the global variable auth is unchanged. It still contains 0x41414000, so it is now a dangling pointer.',
+      authPtr:'0x41414000  ⚠ dangling',
+      servicePtr:'(nil)',
+      heapState:'Freed heap chunk',
+      heapClass:'freed',
+      owner:'allocator / available for reuse',
+      structView:'Former auth object no longer valid',
+      b0:'<span class="offset">0x00</span> stale bytes may remain',
+      b1:'<span class="offset">0x10</span> but program no longer owns them',
+      b2:'<span class="offset">0x20</span> invalid to use',
+      transcript:'[ auth = 0x41414000, service = (nil) ]\\nreset\\n[ auth = 0x41414000, service = (nil) ]',
+      callout:'<div class="callout info"><b>Important:</b> <code>free(auth)</code> does <u>not</u> assign <code>auth = NULL</code>. The pointer still holds the old address.</div>'
+    },
+    {
+      line:17,
+      name:'Step 4 — User enters: service AAAAA...',
+      explain:'The program duplicates the service string into a fresh heap allocation. If the allocator reuses the same freed chunk, service now points to the same address that the dangling auth pointer still holds.',
+      authPtr:'0x41414000  ⚠ dangling',
+      servicePtr:'0x41414000',
+      heapState:'Reused for service string',
+      heapClass:'reused',
+      owner:'service string',
+      structView:'The same bytes are now interpreted in two different ways',
+      b0:'<span class="offset">0x00</span> 41 41 41 41 41 41 41 41 ...',
+      b1:'<span class="offset">0x10</span> 41 41 41 41 41 41 41 41 ...',
+      b2:'<span class="offset">0x20</span> 41 41 41 41',
+      transcript:'[ auth = 0x41414000, service = (nil) ]\\nservice ' + attackString + '\\n[ auth = 0x41414000, service = 0x41414000 ]',
+      callout:'<div class="callout warn"><b>This is the dangerous overlap.</b> <code>auth</code> (stale) and <code>service</code> (current) now reference the same heap chunk.</div>'
+    },
+    {
+      line:20,
+      name:'Step 5 — login reads auth->auth through stale auth',
+      explain:'The login code dereferences auth as if it still pointed to a valid struct auth. But the chunk is now occupied by the service string. The bytes at offset 32–35, interpreted as the integer field auth, are 0x41 0x41 0x41 0x41 ("AAAA"), which is nonzero.',
+      authPtr:'0x41414000  ⚠ dangling',
+      servicePtr:'0x41414000',
+      heapState:'Service bytes misread as struct auth',
+      heapClass:'attack',
+      owner:'service string, misinterpreted through auth',
+      structView:'name = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"    |    auth = 0x41414141',
+      b0:'<span class="offset">0x00</span> 41 41 41 41 41 41 41 41 ...',
+      b1:'<span class="offset">0x10</span> 41 41 41 41 41 41 41 41 ...',
+      b2:'<span class="offset">0x20</span> 41 41 41 41  → nonzero int',
+      transcript:'login',
+      callout:'<div class="callout danger"><b>Use-after-free:</b> <code>auth-&gt;auth</code> is read after the original auth object was freed. Because the chunk now contains attacker-controlled data, the check can be tricked.</div>'
+    },
+    {
+      line:21,
+      name:'Step 6 — Condition succeeds',
+      explain:'Because auth->auth is nonzero, the program takes the privileged path and prints "you have logged in already!"',
+      authPtr:'0x41414000  ⚠ dangling',
+      servicePtr:'0x41414000',
+      heapState:'Exploit effect',
+      heapClass:'attack',
+      owner:'service string, reused through stale auth',
+      structView:'login sees auth->auth != 0',
+      b0:'<span class="offset">0x00</span> attacker-controlled bytes',
+      b1:'<span class="offset">0x10</span> attacker-controlled bytes',
+      b2:'<span class="offset">0x20</span> 41 41 41 41',
+      transcript:'you have logged in already!',
+      callout:'<div class="callout danger"><b>Final lesson:</b> the vulnerability is not just “free then crash.” The stale pointer can point into memory reused for something else, turning old structure accesses into reads of new attacker-controlled data.</div>'
+    }
+  ];
+
+  const code = document.getElementById('code');
+  source.forEach((txt, i) => {
+    const s = document.createElement('span');
+    s.className = 'line';
+    s.dataset.line = i + 1;
+    if ([10,14,17,20,21].includes(i + 1)) s.classList.add('emph');
+    s.textContent = String(i + 1).padStart(2, ' ') + '  ' + txt;
+    code.appendChild(s);
+  });
+
+  const stepbar = document.getElementById('stepbar');
+  steps.forEach(() => {
+    const d = document.createElement('div');
+    d.className = 'stepdot';
+    stepbar.appendChild(d);
+  });
+
+  let idx = 0;
+  const $ = id => document.getElementById(id);
+
+  function render(){
+    const s = steps[idx];
+    document.querySelectorAll('.line').forEach(el => {
+      el.classList.toggle('active', Number(el.dataset.line) === s.line);
+    });
+    [...stepbar.children].forEach((el, i) => el.classList.toggle('done', i <= idx));
+
+    $('stepname').textContent = s.name;
+    $('stepnum').textContent = `Step ${idx + 1} of ${steps.length}`;
+    $('explain').textContent = s.explain;
+    $('stepcallout').innerHTML = s.callout;
+
+    $('authPtr').textContent = s.authPtr;
+    $('servicePtr').textContent = s.servicePtr;
+    $('heapState').textContent = s.heapState;
+    $('owner').textContent = s.owner;
+    $('structView').textContent = s.structView;
+    $('b0').innerHTML = s.b0;
+    $('b1').innerHTML = s.b1;
+    $('b2').innerHTML = s.b2;
+    $('transcript').textContent = s.transcript;
+
+    $('heapBlock').className = 'heapblock ' + s.heapClass;
+    $('authArrow').textContent = s.authPtr.startsWith('(nil)') ? '×' : '↘';
+
+    $('prev').disabled = idx === 0;
+    $('next').disabled = idx === steps.length - 1;
+    $('next').textContent = idx === steps.length - 1 ? 'End of walkthrough' : 'Next step →';
+  }
+
+  $('prev').addEventListener('click', () => { if (idx > 0) { idx--; render(); } });
+  $('next').addEventListener('click', () => { if (idx < steps.length - 1) { idx++; render(); } });
+  $('reset').addEventListener('click', () => { idx = 0; render(); });
+
+  render();
+})();
+</script>
+</body>
+</html>
