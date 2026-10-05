@@ -12,8 +12,7 @@ struct auth {
 struct auth *auth;
 char *service;
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   char line[128];
 
   while(1) {
